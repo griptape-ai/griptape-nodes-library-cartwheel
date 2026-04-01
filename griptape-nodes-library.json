@@ -1,98 +1,71 @@
 {
-    "name": "Example Library",
+    "name": "Cartwheel AI Library",
     "library_schema_version": "0.5.0",
+    "settings": [
+        {
+            "description": "API keys required by nodes in this library",
+            "category": "app_events.on_app_initialization_complete",
+            "contents": {
+                "secrets_to_register": [
+                    "CARTWHEEL_API_KEY"
+                ]
+            }
+        }
+    ],
     "metadata": {
-        "author": "<Your-Name>",
-        "description": "<Your-Description>",
-        "library_version": "0.2.0",
+        "author": "Andrew",
+        "description": "Nodes for interacting with the Cartwheel motion orchestration API.",
+        "library_version": "0.1.0",
         "engine_version": "0.73.0",
         "tags": [
             "Griptape",
-            "AI",
-            "Examples"
+            "Cartwheel",
+            "Animation",
+            "3D",
+            "Motion"
         ],
         "dependencies": {
-            "pip_dependencies": []
+            "pip_dependencies": [
+                "requests"
+            ]
         }
     },
-    "widgets": [
-        {
-            "name": "AnglePicker",
-            "path": "example_nodes_template/widgets/AnglePicker.js",
-            "description": "3D camera angle picker for roll, tilt, and pan rotation values"
-        }
-    ],
     "categories": [
         {
-            "ControlNodes": {
-                "color": "border-red-500",
-                "title": "ControlNodes",
-                "description": "Example nodes of Control Type",
-                "icon": "Scale"
-            }
-        },
-        {
-            "DataNodes": {
-                "color": "border-purple-500",
-                "title": "DataNodes",
-                "description": "Example nodes of Data Type",
-                "icon": "Truck"
+            "animation/cartwheel": {
+                "color": "border-orange-500",
+                "title": "Cartwheel",
+                "description": "Nodes for Cartwheel character and motion generation workflows.",
+                "icon": "PersonStanding"
             }
         }
     ],
     "nodes": [
         {
-            "class_name": "CreateIntroduction",
-            "file_path": "example_nodes_template/create_introduction.py",
+            "class_name": "CartwheelCreateCharacter",
+            "file_path": "cartwheel/create_character.py",
             "metadata": {
-                "category": "ControlNodes",
-                "description": "Example Griptape Node that creates an introduction.",
-                "display_name": "Create an Introduction"
+                "category": "animation/cartwheel",
+                "description": "Uploads a character model and thumbnail to Cartwheel, then polls until processing finishes.",
+                "display_name": "Cartwheel Create Character"
             }
         },
         {
-            "class_name": "ConvertToPigLatin",
-            "file_path": "example_nodes_template/pig_latin.py",
+            "class_name": "CartwheelGenerateMotion",
+            "file_path": "cartwheel/generate_motion.py",
             "metadata": {
-                "category": "ControlNodes",
-                "description": "Example Griptape Node that converts to pig latin",
-                "display_name": "Convert to Pig Latin"
+                "category": "animation/cartwheel",
+                "description": "Generates motion from text or a reference video, polls the batch, and downloads the resulting zip.",
+                "display_name": "Cartwheel Generate Motion"
             }
         },
         {
-            "class_name": "OpenAIChat",
-            "file_path": "example_nodes_template/openai_chat.py",
+            "class_name": "CartwheelCreateMascot",
+            "file_path": "cartwheel/create_mascot.py",
             "metadata": {
-                "category": "ControlNodes",
-                "description": "Example Griptape Node that displays how to account for dependencies.",
-                "display_name": "Example Dependency Node"
-            }
-        },
-        {
-            "class_name": "CreateName",
-            "file_path": "example_nodes_template/create_name.py",
-            "metadata": {
-                "category": "DataNodes",
-                "description": "Example Griptape Node that creates a name.",
-                "display_name": "Create a Name"
-            }
-        },
-        {
-            "class_name": "Age",
-            "file_path": "example_nodes_template/age_node.py",
-            "metadata": {
-                "category": "DataNodes",
-                "description": "Example Griptape Node that sets an age.",
-                "display_name": "Set Age"
-            }
-        },
-        {
-            "class_name": "CameraAnglePicker",
-            "file_path": "example_nodes_template/camera_angle_picker.py",
-            "metadata": {
-                "category": "DataNodes",
-                "description": "Example Griptape Node with custom AnglePicker widget for 3D rotation angles",
-                "display_name": "Camera Angle Picker"
+                "category": "animation/cartwheel",
+                "description": "Uploads mascot source assets, submits a mascot job, polls for completion, and downloads the generated output video.",
+                "display_name": "Cartwheel Create Mascot"
             }
         }
     ]
