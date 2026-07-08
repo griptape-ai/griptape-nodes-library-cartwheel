@@ -412,7 +412,9 @@ class CartwheelCreateMascot(SuccessFailureNode):
             mascot, mascot_jobs_response = self._wait_for_batch_mascot(batch_id)
             mascot_id = str(mascot.get("mascotID") or "")
         else:
-            raise RuntimeError(f"Cartwheel mascot create response did not include a mascot or batch ID: {create_response}")
+            raise RuntimeError(
+                f"Cartwheel mascot create response did not include a mascot or batch ID: {create_response}"
+            )
 
         output_video_url = str(mascot.get("outputVideoURL") or "")
         downloaded_output_video_url = None
@@ -504,9 +506,14 @@ class CartwheelCreateMascot(SuccessFailureNode):
             if last_items and all(status == "COMPLETED" for status in statuses):
                 return last_items[0], mascot_jobs_response
 
-            failed_item = next((item for item in last_items if str(item.get("status") or "").upper() in BATCH_FAILURE_STATUSES), None)
+            failed_item = next(
+                (item for item in last_items if str(item.get("status") or "").upper() in BATCH_FAILURE_STATUSES), None
+            )
             if failed_item is not None:
-                message = str(failed_item.get("errorMessage") or f"Mascot generation failed with status {failed_item.get('status')}")
+                message = str(
+                    failed_item.get("errorMessage")
+                    or f"Mascot generation failed with status {failed_item.get('status')}"
+                )
                 raise RuntimeError(message)
 
             if statuses and not any(status in BATCH_IN_PROGRESS_STATUSES for status in statuses):
@@ -518,7 +525,9 @@ class CartwheelCreateMascot(SuccessFailureNode):
 
                 time.sleep(DEFAULT_POLL_DELAY_SECONDS)
 
-        raise RuntimeError(f"Timed out waiting for Cartwheel mascot batch {batch_id}. Last response: {last_response or {'items': last_items}}")
+        raise RuntimeError(
+            f"Timed out waiting for Cartwheel mascot batch {batch_id}. Last response: {last_response or {'items': last_items}}"
+        )
 
     def _extract_media_upload(self, response: dict[str, Any]) -> dict[str, str]:
         media_uploads = response.get("mediaUploads")

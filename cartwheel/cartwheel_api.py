@@ -18,7 +18,6 @@ from griptape.artifacts import ImageUrlArtifact, VideoUrlArtifact
 from griptape_nodes.retained_mode.events.os_events import ExistingFilePolicy
 from griptape_nodes.retained_mode.griptape_nodes import GriptapeNodes, logger
 
-
 BASE_URL = "https://external-mogen.api.getcartwheel.com"
 API_KEY_ENV_VAR = "CARTWHEEL_API_KEY"
 DEFAULT_POLL_DELAY_SECONDS = 5
@@ -152,10 +151,13 @@ def wait_for_character(
             return character
 
         if upload_status in CHARACTER_FAILURE_STATUSES:
-            error_message = first_non_empty_string(
-                character,
-                preferred_keys=("errorMessage", "message", "rejectedReason"),
-            ) or f"Character processing failed with status {upload_status}"
+            error_message = (
+                first_non_empty_string(
+                    character,
+                    preferred_keys=("errorMessage", "message", "rejectedReason"),
+                )
+                or f"Character processing failed with status {upload_status}"
+            )
             raise RuntimeError(error_message)
 
         if attempt < max_attempts - 1:
@@ -191,16 +193,21 @@ def wait_for_batch(
             return batch
 
         if status in BATCH_FAILURE_STATUSES:
-            error_message = first_non_empty_string(
-                batch,
-                preferred_keys=("errorMessage", "message", "rejectedReason"),
-            ) or f"Motion batch failed with status {status}"
+            error_message = (
+                first_non_empty_string(
+                    batch,
+                    preferred_keys=("errorMessage", "message", "rejectedReason"),
+                )
+                or f"Motion batch failed with status {status}"
+            )
             raise RuntimeError(error_message)
 
         if attempt < max_attempts - 1:
             time.sleep(poll_delay)
 
-    raise RuntimeError(f"Timed out waiting for Cartwheel batch {batch_id}. Last response: {json.dumps(last_response or {})}")
+    raise RuntimeError(
+        f"Timed out waiting for Cartwheel batch {batch_id}. Last response: {json.dumps(last_response or {})}"
+    )
 
 
 def list_all_batch_motions(batch_id: str, *, limit: int = 100) -> dict[str, Any]:
@@ -250,16 +257,21 @@ def wait_for_mascot(
             return mascot
 
         if status in BATCH_FAILURE_STATUSES:
-            error_message = first_non_empty_string(
-                mascot,
-                preferred_keys=("errorMessage", "message", "rejectedReason"),
-            ) or f"Mascot generation failed with status {status}"
+            error_message = (
+                first_non_empty_string(
+                    mascot,
+                    preferred_keys=("errorMessage", "message", "rejectedReason"),
+                )
+                or f"Mascot generation failed with status {status}"
+            )
             raise RuntimeError(error_message)
 
         if attempt < max_attempts - 1:
             time.sleep(poll_delay)
 
-    raise RuntimeError(f"Timed out waiting for Cartwheel mascot {mascot_id}. Last response: {json.dumps(last_response or {})}")
+    raise RuntimeError(
+        f"Timed out waiting for Cartwheel mascot {mascot_id}. Last response: {json.dumps(last_response or {})}"
+    )
 
 
 def list_all_batch_mascots(batch_id: str, *, limit: int = 100) -> dict[str, Any]:
@@ -295,10 +307,14 @@ def prepare_file(value: Any, *, default_file_name: str, default_extension: str) 
                 file_name=guess_file_name(value.get("name"), default_file_name, default_extension),
             )
         if "value" in value:
-            return prepare_file(value["value"], default_file_name=default_file_name, default_extension=default_extension)
+            return prepare_file(
+                value["value"], default_file_name=default_file_name, default_extension=default_extension
+            )
 
     if isinstance(value, bytes):
-        return PreparedFile(data=value, file_name=f"{default_file_name}.{default_extension}", extension=default_extension)
+        return PreparedFile(
+            data=value, file_name=f"{default_file_name}.{default_extension}", extension=default_extension
+        )
 
     artifact_value = getattr(value, "value", None)
     if isinstance(artifact_value, str):
@@ -426,6 +442,8 @@ def probe_video_duration_seconds(file: PreparedFile) -> float | None:
         return None
 
     duration_value = format_data.get("duration")
+    if duration_value is None:
+        return None
     try:
         duration = float(duration_value)
     except (TypeError, ValueError):
