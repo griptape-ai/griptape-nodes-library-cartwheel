@@ -442,6 +442,8 @@ def probe_video_duration_seconds(file: PreparedFile) -> float | None:
         return None
 
     duration_value = format_data.get("duration")
+    if duration_value is None:
+        return None
     try:
         duration = float(duration_value)
     except (TypeError, ValueError):
