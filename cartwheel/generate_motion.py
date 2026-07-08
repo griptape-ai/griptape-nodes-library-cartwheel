@@ -607,7 +607,9 @@ class CartwheelGenerateMotion(SuccessFailureNode):
 
         if zip_download_url:
             zip_bytes = download_bytes(zip_download_url)
-            downloaded_zip_url = create_static_download(zip_bytes, timestamped_file_name("cartwheel_motion_batch", "zip"))
+            downloaded_zip_url = create_static_download(
+                zip_bytes, timestamped_file_name("cartwheel_motion_batch", "zip")
+            )
             zip_entries = list_zip_entries(zip_bytes)
 
         motion_ids = extract_motion_ids([item for item in motion_items if isinstance(item, dict)])
