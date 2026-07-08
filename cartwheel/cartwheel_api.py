@@ -18,7 +18,6 @@ from griptape.artifacts import ImageUrlArtifact, VideoUrlArtifact
 from griptape_nodes.retained_mode.events.os_events import ExistingFilePolicy
 from griptape_nodes.retained_mode.griptape_nodes import GriptapeNodes, logger
 
-
 BASE_URL = "https://external-mogen.api.getcartwheel.com"
 API_KEY_ENV_VAR = "CARTWHEEL_API_KEY"
 DEFAULT_POLL_DELAY_SECONDS = 5
