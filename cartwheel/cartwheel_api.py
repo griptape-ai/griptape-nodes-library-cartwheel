@@ -15,11 +15,14 @@ from zipfile import BadZipFile, ZipFile
 
 import requests
 from griptape.artifacts import ImageUrlArtifact, VideoUrlArtifact
+from griptape_nodes.exe_types.core_types import NodeError
 from griptape_nodes.retained_mode.events.os_events import ExistingFilePolicy
 from griptape_nodes.retained_mode.griptape_nodes import GriptapeNodes, logger
 
 BASE_URL = "https://external-mogen.api.getcartwheel.com"
 API_KEY_ENV_VAR = "CARTWHEEL_API_KEY"
+PROVIDER = "Cartwheel"
+STORAGE = "Cartwheel's file storage"
 DEFAULT_POLL_DELAY_SECONDS = 5
 
 CHARACTER_STATUS_COMPLETE = "COMPLETE"
@@ -57,8 +60,7 @@ class PreparedFile:
 def get_api_key() -> str:
     api_key = GriptapeNodes.SecretsManager().get_secret(API_KEY_ENV_VAR)
     if not api_key:
-        msg = f"Cartwheel API key not found. Please set the {API_KEY_ENV_VAR} secret."
-        raise ValueError(msg)
+        raise NodeError.from_missing_secret(API_KEY_ENV_VAR)
     return api_key
 
 
@@ -74,19 +76,20 @@ def request_json(  # noqa: PLR0913
     if expected_statuses is None:
         expected_statuses = {200}
 
-    response = requests.request(
-        method=method,
-        url=f"{BASE_URL}{path}",
-        headers={"Accept": "application/json", "Content-Type": "application/json", "x-api-key": get_api_key()},
-        json=payload,
-        params=params,
-        timeout=timeout,
-    )
+    try:
+        response = requests.request(
+            method=method,
+            url=f"{BASE_URL}{path}",
+            headers={"Accept": "application/json", "Content-Type": "application/json", "x-api-key": get_api_key()},
+            json=payload,
+            params=params,
+            timeout=timeout,
+        )
+    except requests.RequestException as e:
+        raise NodeError.from_request_exception(e, provider=PROVIDER, secret_name=API_KEY_ENV_VAR) from e
 
     if response.status_code not in expected_statuses:
-        raise RuntimeError(
-            f"Cartwheel request failed for {method} {path} with status {response.status_code}: {response.text[:500]}"
-        )
+        raise NodeError.from_http_response(response, provider=PROVIDER, secret_name=API_KEY_ENV_VAR)
 
     if not response.content:
         return {}
@@ -94,10 +97,10 @@ def request_json(  # noqa: PLR0913
     try:
         data = response.json()
     except ValueError as e:
-        raise RuntimeError(f"Cartwheel returned invalid JSON for {method} {path}: {response.text[:500]}") from e
+        raise NodeError(f"{PROVIDER} sent a reply that is not JSON. Run the node again.") from e
 
     if not isinstance(data, dict):
-        raise RuntimeError(f"Cartwheel returned unexpected JSON for {method} {path}: {data!r}")
+        raise NodeError(f"{PROVIDER} sent a reply in an unexpected format. Run the node again.")
 
     return data
 
@@ -113,17 +116,35 @@ def upload_to_presigned_url(
     if content_type:
         headers["Content-Type"] = content_type
 
-    response = requests.put(upload_url, data=data, headers=headers, timeout=timeout)
+    try:
+        response = requests.put(upload_url, data=data, headers=headers, timeout=timeout)
+    except requests.RequestException as e:
+        raise NodeError.from_request_exception(e, provider=STORAGE) from e
     if response.status_code not in {200, 201}:
-        raise RuntimeError(
-            f"Failed to upload file to Cartwheel presigned URL. Status {response.status_code}: {response.text[:500]}"
-        )
+        raise NodeError.from_http_response(response, provider=STORAGE, key_refused=False)
 
 
 def download_bytes(url: str, *, timeout: int = 300) -> bytes:
-    response = requests.get(url, timeout=timeout)
-    response.raise_for_status()
+    try:
+        response = requests.get(url, timeout=timeout)
+        response.raise_for_status()
+    except requests.RequestException as e:
+        raise NodeError.from_request_exception(e, provider="The download server", key_refused=False) from e
     return response.content
+
+
+def job_failed_error(message: str, status: str, body: dict[str, Any], **ids: str) -> NodeError:
+    """The error for a job Cartwheel reports as failed, with its status and ID and the full status response."""
+    return NodeError(message, fields={"status": status, **ids}, response=body)
+
+
+def timeout_error(kind: str, max_attempts: int, last: dict[str, Any] | None, **ids: str) -> NodeError:
+    """The error for a job still running when polling stops."""
+    message = (
+        f"The Cartwheel {kind} was still processing after {max_attempts} status checks. "
+        "Raise 'Max Poll Attempts' and run the node again, or look it up later by its ID."
+    )
+    return NodeError(message, fields={**ids}, response=last)
 
 
 def wait_for_character(
@@ -158,14 +179,12 @@ def wait_for_character(
                 )
                 or f"Character processing failed with status {upload_status}"
             )
-            raise RuntimeError(error_message)
+            raise job_failed_error(error_message, upload_status, character, character_id=character_id)
 
         if attempt < max_attempts - 1:
             time.sleep(poll_delay)
 
-    raise RuntimeError(
-        f"Timed out waiting for Cartwheel character {character_id}. Last response: {json.dumps(last_response or {})}"
-    )
+    raise timeout_error("character", max_attempts, last_response, character_id=character_id)
 
 
 def wait_for_batch(
@@ -200,14 +219,12 @@ def wait_for_batch(
                 )
                 or f"Motion batch failed with status {status}"
             )
-            raise RuntimeError(error_message)
+            raise job_failed_error(error_message, status, batch, batch_id=batch_id)
 
         if attempt < max_attempts - 1:
             time.sleep(poll_delay)
 
-    raise RuntimeError(
-        f"Timed out waiting for Cartwheel batch {batch_id}. Last response: {json.dumps(last_response or {})}"
-    )
+    raise timeout_error("motion batch", max_attempts, last_response, batch_id=batch_id)
 
 
 def list_all_batch_motions(batch_id: str, *, limit: int = 100) -> dict[str, Any]:
@@ -264,14 +281,12 @@ def wait_for_mascot(
                 )
                 or f"Mascot generation failed with status {status}"
             )
-            raise RuntimeError(error_message)
+            raise job_failed_error(error_message, status, mascot, mascot_id=mascot_id)
 
         if attempt < max_attempts - 1:
             time.sleep(poll_delay)
 
-    raise RuntimeError(
-        f"Timed out waiting for Cartwheel mascot {mascot_id}. Last response: {json.dumps(last_response or {})}"
-    )
+    raise timeout_error("mascot", max_attempts, last_response, mascot_id=mascot_id)
 
 
 def list_all_batch_mascots(batch_id: str, *, limit: int = 100) -> dict[str, Any]:
@@ -298,7 +313,7 @@ def list_all_batch_mascots(batch_id: str, *, limit: int = 100) -> dict[str, Any]
 
 def prepare_file(value: Any, *, default_file_name: str, default_extension: str) -> PreparedFile:
     if value is None:
-        raise ValueError(f"Missing required file input for {default_file_name}")
+        raise NodeError(f"Connect a file to the {default_file_name.replace('_', ' ')} input.")
 
     if isinstance(value, dict):
         if "base64" in value and isinstance(value["base64"], str):
@@ -338,7 +353,9 @@ def prepare_file(value: Any, *, default_file_name: str, default_extension: str) 
             default_extension=default_extension,
         )
 
-    raise TypeError(f"Unsupported file input type: {type(value).__name__}")
+    raise NodeError(
+        f"The {default_file_name.replace('_', ' ')} input is a {type(value).__name__}. Connect a file, a file path or a URL."
+    )
 
 
 def prepared_file_from_string(value: str, *, default_file_name: str, default_extension: str) -> PreparedFile:
@@ -536,7 +553,7 @@ def extract_media_upload_item(payload: dict[str, Any]) -> dict[str, str | None]:
     uploads = payload.get("mediaUploads")
     item = uploads[0] if isinstance(uploads, list) and uploads else payload
     if not isinstance(item, dict):
-        raise RuntimeError(f"Unexpected media upload response from Cartwheel: {payload}")
+        raise NodeError("Cartwheel's media upload reply was not in the expected format.", response=payload)
 
     media_id = find_string_field(
         item,
@@ -552,7 +569,7 @@ def extract_media_upload_item(payload: dict[str, Any]) -> dict[str, str | None]:
     )
 
     if not media_id or not upload_url:
-        raise RuntimeError(f"Could not determine media upload details from Cartwheel response: {payload}")
+        raise NodeError("Cartwheel's media upload reply has no media ID or upload URL.", response=payload)
 
     return {"media_id": media_id, "upload_url": upload_url}
 

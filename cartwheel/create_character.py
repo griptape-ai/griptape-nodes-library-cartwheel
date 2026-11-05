@@ -4,7 +4,7 @@ import json
 from pathlib import Path
 from typing import Any
 
-from griptape_nodes.exe_types.core_types import Parameter, ParameterMode
+from griptape_nodes.exe_types.core_types import NodeError, Parameter, ParameterMode
 from griptape_nodes.exe_types.node_types import AsyncResult, SuccessFailureNode
 from griptape_nodes.exe_types.param_types.parameter_image import ParameterImage
 from griptape_nodes.exe_types.param_types.parameter_three_d import Parameter3D
@@ -150,23 +150,24 @@ class CartwheelCreateCharacter(SuccessFailureNode):
             result_details_placeholder="Character creation status will be shown here.",
         )
 
-    def validate_node(self) -> list[Exception] | None:
-        errors: list[Exception] = []
-
+    def validate_before_node_run(self) -> list[Exception] | None:
+        # A missing key comes first and alone, because nothing else can run without it.
         try:
             get_api_key()
-        except Exception as e:
-            errors.append(e)
+        except NodeError as e:
+            return [e]
+
+        errors: list[Exception] = list(super().validate_before_node_run() or [])
 
         if self.get_parameter_value("character_model") is None:
-            errors.append(ValueError("character_model is required."))
+            errors.append(NodeError("Connect a 3D model to 'Character Model'."))
 
         if self.get_parameter_value("thumbnail_image") is None:
-            errors.append(ValueError("thumbnail_image is required."))
+            errors.append(NodeError("Connect an image to 'Thumbnail Image'."))
 
         max_poll_attempts = self.get_parameter_value("max_poll_attempts")
         if isinstance(max_poll_attempts, int) and max_poll_attempts < 1:
-            errors.append(ValueError("max_poll_attempts must be at least 1."))
+            errors.append(NodeError(f"'Max Poll Attempts' must be at least 1. It is set to {max_poll_attempts}."))
 
         return errors or None
 
@@ -194,6 +195,7 @@ class CartwheelCreateCharacter(SuccessFailureNode):
         return character
 
     def _process(self) -> dict[str, Any]:
+        get_api_key()
         self._publish_outputs(
             character_id="",
             estimated_seconds_wait_time=0,
@@ -231,14 +233,16 @@ class CartwheelCreateCharacter(SuccessFailureNode):
 
         character_id = str(upload_response.get("characterID") or "")
         if not character_id:
-            raise RuntimeError(f"Cartwheel did not return a characterID: {upload_response}")
+            raise NodeError("Cartwheel did not return an ID for the new character.", response=upload_response)
 
         model_upload_url = str(upload_response.get("characterFileUploadURL") or "")
         config_upload_url = str(upload_response.get("configUploadURL") or "")
         thumbnail_upload_url = str(upload_response.get("thumbnailUploadURL") or "")
 
         if not model_upload_url or not config_upload_url:
-            raise RuntimeError(f"Cartwheel upload response is missing required upload URLs: {upload_response}")
+            raise NodeError(
+                "Cartwheel did not return the upload URLs for the character files.", response=upload_response
+            )
 
         upload_to_presigned_url(
             model_upload_url,

@@ -1,11 +1,12 @@
 from __future__ import annotations
 
+import time
 from pathlib import Path
 from typing import Any
 from urllib.parse import urlparse
 
 from griptape.artifacts import ImageArtifact, ImageUrlArtifact
-from griptape_nodes.exe_types.core_types import Parameter, ParameterList, ParameterMode
+from griptape_nodes.exe_types.core_types import NodeError, Parameter, ParameterList, ParameterMode
 from griptape_nodes.exe_types.node_types import AsyncResult, SuccessFailureNode
 from griptape_nodes.exe_types.param_types.parameter_image import ParameterImage
 from griptape_nodes.exe_types.param_types.parameter_video import ParameterVideo
@@ -22,10 +23,12 @@ try:
         download_bytes,
         get_api_key,
         guess_content_type,
+        job_failed_error,
         list_all_batch_mascots,
         prepare_file,
         probe_video_duration_seconds,
         request_json,
+        timeout_error,
         timestamped_file_name,
         upload_to_presigned_url,
         video_artifact_from_url,
@@ -41,10 +44,12 @@ except ImportError:
         download_bytes,
         get_api_key,
         guess_content_type,
+        job_failed_error,
         list_all_batch_mascots,
         prepare_file,
         probe_video_duration_seconds,
         request_json,
+        timeout_error,
         timestamped_file_name,
         upload_to_presigned_url,
         video_artifact_from_url,
@@ -274,28 +279,31 @@ class CartwheelCreateMascot(SuccessFailureNode):
 
         return super().after_value_set(parameter, value)
 
-    def validate_node(self) -> list[Exception] | None:
-        errors: list[Exception] = []
-
+    def validate_before_node_run(self) -> list[Exception] | None:
+        # A missing key comes first and alone, because nothing else can run without it.
         try:
             get_api_key()
-        except Exception as e:
-            errors.append(e)
+        except NodeError as e:
+            return [e]
+
+        errors: list[Exception] = list(super().validate_before_node_run() or [])
 
         if self.get_parameter_value("input_video") is None:
-            errors.append(ValueError("input_video is required."))
+            errors.append(NodeError("Connect a video to 'Input Video'."))
 
         reference_images = self.get_parameter_value("character_reference_images")
         if not isinstance(reference_images, list) or not reference_images:
-            errors.append(ValueError("character_reference_images must contain at least one image."))
+            errors.append(NodeError("Connect at least one image to 'Character Reference Images'."))
 
         prompt = str(self.get_parameter_value("prompt") or "").strip()
         if not prompt:
-            errors.append(ValueError("prompt is required."))
+            errors.append(NodeError("Enter a prompt in 'Prompt'."))
 
         mascot_page_limit = self.get_parameter_value("mascot_page_limit")
         if isinstance(mascot_page_limit, int) and not 1 <= mascot_page_limit <= 100:
-            errors.append(ValueError("mascot_page_limit must be between 1 and 100."))
+            errors.append(
+                NodeError(f"'Mascot Page Limit' must be between 1 and 100. It is set to {mascot_page_limit}.")
+            )
 
         return errors or None
 
@@ -322,6 +330,7 @@ class CartwheelCreateMascot(SuccessFailureNode):
         return result
 
     def _process(self) -> dict[str, Any]:
+        get_api_key()
         self._publish_outputs(
             mascot_id="",
             batch_id="",
@@ -412,9 +421,7 @@ class CartwheelCreateMascot(SuccessFailureNode):
             mascot, mascot_jobs_response = self._wait_for_batch_mascot(batch_id)
             mascot_id = str(mascot.get("mascotID") or "")
         else:
-            raise RuntimeError(
-                f"Cartwheel mascot create response did not include a mascot or batch ID: {create_response}"
-            )
+            raise NodeError("Cartwheel did not return an ID for the mascot job.", response=create_response)
 
         output_video_url = str(mascot.get("outputVideoURL") or "")
         downloaded_output_video_url = None
@@ -514,26 +521,27 @@ class CartwheelCreateMascot(SuccessFailureNode):
                     failed_item.get("errorMessage")
                     or f"Mascot generation failed with status {failed_item.get('status')}"
                 )
-                raise RuntimeError(message)
+                raise job_failed_error(message, str(failed_item.get("status")), failed_item, batch_id=batch_id)
 
             if statuses and not any(status in BATCH_IN_PROGRESS_STATUSES for status in statuses):
                 # If the API returns a non-empty terminal set that isn't all completed, treat it as failure.
-                raise RuntimeError(f"Unexpected mascot batch terminal state: {statuses}")
+                raise job_failed_error(
+                    "The mascot batch ended without every job completing.",
+                    ", ".join(statuses),
+                    mascot_jobs_response,
+                    batch_id=batch_id,
+                )
 
             if attempt < max_attempts - 1:
-                import time
-
                 time.sleep(DEFAULT_POLL_DELAY_SECONDS)
 
-        raise RuntimeError(
-            f"Timed out waiting for Cartwheel mascot batch {batch_id}. Last response: {last_response or {'items': last_items}}"
-        )
+        raise timeout_error("mascot batch", max_attempts, last_response, batch_id=batch_id)
 
     def _extract_media_upload(self, response: dict[str, Any]) -> dict[str, str]:
         media_uploads = response.get("mediaUploads")
         item = media_uploads[0] if isinstance(media_uploads, list) and media_uploads else response
         if not isinstance(item, dict):
-            raise RuntimeError(f"Unexpected Cartwheel media upload response: {response}")
+            raise NodeError("Cartwheel's media upload reply was not in the expected format.", response=response)
 
         media_id = ""
         for key in ("mediaID", "mediaId", "id"):
@@ -550,7 +558,7 @@ class CartwheelCreateMascot(SuccessFailureNode):
                 break
 
         if not media_id or not upload_url:
-            raise RuntimeError(f"Could not determine media upload details from response: {response}")
+            raise NodeError("Cartwheel's media upload reply has no media ID or upload URL.", response=response)
 
         return {"media_id": media_id, "upload_url": upload_url}
 
