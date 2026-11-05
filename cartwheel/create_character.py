@@ -18,11 +18,9 @@ try:
         get_api_key,
         guess_content_type,
         image_artifact_from_url,
-        parameter_error,
         prepare_file,
         request_json,
         timestamped_file_name,
-        unexpected_response_error,
         upload_to_presigned_url,
         wait_for_character,
     )
@@ -34,11 +32,9 @@ except ImportError:
         get_api_key,
         guess_content_type,
         image_artifact_from_url,
-        parameter_error,
         prepare_file,
         request_json,
         timestamped_file_name,
-        unexpected_response_error,
         upload_to_presigned_url,
         wait_for_character,
     )
@@ -155,7 +151,7 @@ class CartwheelCreateCharacter(SuccessFailureNode):
         )
 
     def validate_before_node_run(self) -> list[Exception] | None:
-        # A missing key is reported first and on its own, because nothing else can run without it.
+        # A missing key comes first and alone, because nothing else can run without it.
         try:
             get_api_key()
         except NodeError as e:
@@ -164,18 +160,14 @@ class CartwheelCreateCharacter(SuccessFailureNode):
         errors: list[Exception] = list(super().validate_before_node_run() or [])
 
         if self.get_parameter_value("character_model") is None:
-            errors.append(parameter_error("Connect a 3D model to 'Character Model'.", "character_model"))
+            errors.append(NodeError("Connect a 3D model to 'Character Model'."))
 
         if self.get_parameter_value("thumbnail_image") is None:
-            errors.append(parameter_error("Connect an image to 'Thumbnail Image'.", "thumbnail_image"))
+            errors.append(NodeError("Connect an image to 'Thumbnail Image'."))
 
         max_poll_attempts = self.get_parameter_value("max_poll_attempts")
         if isinstance(max_poll_attempts, int) and max_poll_attempts < 1:
-            errors.append(
-                parameter_error(
-                    f"'Max Poll Attempts' must be at least 1. It is set to {max_poll_attempts}.", "max_poll_attempts"
-                )
-            )
+            errors.append(NodeError(f"'Max Poll Attempts' must be at least 1. It is set to {max_poll_attempts}."))
 
         return errors or None
 
@@ -241,19 +233,15 @@ class CartwheelCreateCharacter(SuccessFailureNode):
 
         character_id = str(upload_response.get("characterID") or "")
         if not character_id:
-            raise unexpected_response_error(
-                "Cartwheel did not return an ID for the new character. Run the node again.", upload_response
-            )
+            raise NodeError("Cartwheel did not return an ID for the new character.", response=upload_response)
 
         model_upload_url = str(upload_response.get("characterFileUploadURL") or "")
         config_upload_url = str(upload_response.get("configUploadURL") or "")
         thumbnail_upload_url = str(upload_response.get("thumbnailUploadURL") or "")
 
         if not model_upload_url or not config_upload_url:
-            raise unexpected_response_error(
-                "Cartwheel did not return the upload URLs for the character files. Run the node again.",
-                upload_response,
-                fields={"character_id": character_id},
+            raise NodeError(
+                "Cartwheel did not return the upload URLs for the character files.", response=upload_response
             )
 
         upload_to_presigned_url(

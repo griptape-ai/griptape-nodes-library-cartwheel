@@ -16,7 +16,7 @@
         "author": "Andrew",
         "description": "Nodes for interacting with the Cartwheel motion orchestration API.",
         "library_version": "0.2.0",
-        "engine_version": "0.104.0",
+        "engine_version": "0.105.0",
         "tags": [
             "Griptape",
             "Cartwheel",

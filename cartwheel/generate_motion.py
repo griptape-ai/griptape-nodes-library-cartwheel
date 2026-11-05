@@ -20,12 +20,10 @@ try:
         guess_content_type,
         list_all_batch_motions,
         list_zip_entries,
-        parameter_error,
         prepare_file,
         probe_video_duration_seconds,
         request_json,
         timestamped_file_name,
-        unexpected_response_error,
         upload_to_presigned_url,
         video_artifact_from_url,
         wait_for_batch,
@@ -42,12 +40,10 @@ except ImportError:
         guess_content_type,
         list_all_batch_motions,
         list_zip_entries,
-        parameter_error,
         prepare_file,
         probe_video_duration_seconds,
         request_json,
         timestamped_file_name,
-        unexpected_response_error,
         upload_to_presigned_url,
         video_artifact_from_url,
         wait_for_batch,
@@ -507,7 +503,7 @@ class CartwheelGenerateMotion(SuccessFailureNode):
         )
 
     def validate_before_node_run(self) -> list[Exception] | None:
-        # A missing key is reported first and on its own, because nothing else can run without it.
+        # A missing key comes first and alone, because nothing else can run without it.
         try:
             get_api_key()
         except NodeError as e:
@@ -520,18 +516,15 @@ class CartwheelGenerateMotion(SuccessFailureNode):
         reference_video = self.get_parameter_value("reference_video")
 
         if not character_id:
-            errors.append(parameter_error("Enter a character ID in 'Character ID'.", "character_id"))
+            errors.append(NodeError("Enter a character ID in 'Character ID'."))
 
         if reference_video is None and not prompt:
-            errors.append(parameter_error("Enter a prompt, or connect a video to 'Reference Video'.", "prompt"))
+            errors.append(NodeError("Enter a prompt, or connect a video to 'Reference Video'."))
 
         motion_page_limit = self.get_parameter_value("motion_page_limit")
         if isinstance(motion_page_limit, int) and not 1 <= motion_page_limit <= 100:
             errors.append(
-                parameter_error(
-                    f"'Motion Page Limit' must be between 1 and 100. It is set to {motion_page_limit}.",
-                    "motion_page_limit",
-                )
+                NodeError(f"'Motion Page Limit' must be between 1 and 100. It is set to {motion_page_limit}.")
             )
 
         return errors or None
@@ -596,9 +589,7 @@ class CartwheelGenerateMotion(SuccessFailureNode):
 
         batch_id = str(batch_response.get("batchID") or "")
         if not batch_id:
-            raise unexpected_response_error(
-                "Cartwheel did not return an ID for the motion batch. Run the node again.", batch_response
-            )
+            raise NodeError("Cartwheel did not return an ID for the motion batch.", response=batch_response)
 
         final_batch = wait_for_batch(
             batch_id,
