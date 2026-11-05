@@ -122,7 +122,7 @@ Outputs include the mascot ID, batch ID, the output video URL, the downloaded ou
 
 ## Troubleshooting
 
-**"Cartwheel API key not found"**
+**"CARTWHEEL_API_KEY is not set"**
 - Ensure your `CARTWHEEL_API_KEY` secret is configured in the Griptape Nodes IDE Settings → API Keys & Secrets.
 
 **Job times out**
