@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from griptape_nodes.exe_types.core_types import Parameter, ParameterMode
+from griptape_nodes.exe_types.core_types import NodeError, Parameter, ParameterMode
 from griptape_nodes.exe_types.node_types import AsyncResult, SuccessFailureNode
 from griptape_nodes.exe_types.param_types.parameter_video import ParameterVideo
 from griptape_nodes.retained_mode.griptape_nodes import logger
@@ -20,10 +20,12 @@ try:
         guess_content_type,
         list_all_batch_motions,
         list_zip_entries,
+        parameter_error,
         prepare_file,
         probe_video_duration_seconds,
         request_json,
         timestamped_file_name,
+        unexpected_response_error,
         upload_to_presigned_url,
         video_artifact_from_url,
         wait_for_batch,
@@ -40,10 +42,12 @@ except ImportError:
         guess_content_type,
         list_all_batch_motions,
         list_zip_entries,
+        parameter_error,
         prepare_file,
         probe_video_duration_seconds,
         request_json,
         timestamped_file_name,
+        unexpected_response_error,
         upload_to_presigned_url,
         video_artifact_from_url,
         wait_for_batch,
@@ -502,27 +506,33 @@ class CartwheelGenerateMotion(SuccessFailureNode):
             result_details_placeholder="Motion generation status will be shown here.",
         )
 
-    def validate_node(self) -> list[Exception] | None:
-        errors: list[Exception] = []
-
+    def validate_before_node_run(self) -> list[Exception] | None:
+        # A missing key is reported first and on its own, because nothing else can run without it.
         try:
             get_api_key()
-        except Exception as e:
-            errors.append(e)
+        except NodeError as e:
+            return [e]
+
+        errors: list[Exception] = list(super().validate_before_node_run() or [])
 
         character_id = str(self.get_parameter_value("character_id") or "").strip()
         prompt = str(self.get_parameter_value("prompt") or "").strip()
         reference_video = self.get_parameter_value("reference_video")
 
         if not character_id:
-            errors.append(ValueError("character_id is required."))
+            errors.append(parameter_error("Enter a character ID in 'Character ID'.", "character_id"))
 
         if reference_video is None and not prompt:
-            errors.append(ValueError("prompt is required when reference_video is not provided."))
+            errors.append(parameter_error("Enter a prompt, or connect a video to 'Reference Video'.", "prompt"))
 
         motion_page_limit = self.get_parameter_value("motion_page_limit")
         if isinstance(motion_page_limit, int) and not 1 <= motion_page_limit <= 100:
-            errors.append(ValueError("motion_page_limit must be between 1 and 100."))
+            errors.append(
+                parameter_error(
+                    f"'Motion Page Limit' must be between 1 and 100. It is set to {motion_page_limit}.",
+                    "motion_page_limit",
+                )
+            )
 
         return errors or None
 
@@ -549,6 +559,7 @@ class CartwheelGenerateMotion(SuccessFailureNode):
         return result
 
     def _process(self) -> dict[str, Any]:
+        get_api_key()
         self._publish_outputs(
             batch_id="",
             zip_download_url="",
@@ -585,7 +596,9 @@ class CartwheelGenerateMotion(SuccessFailureNode):
 
         batch_id = str(batch_response.get("batchID") or "")
         if not batch_id:
-            raise RuntimeError(f"Cartwheel did not return a batchID: {batch_response}")
+            raise unexpected_response_error(
+                "Cartwheel did not return an ID for the motion batch. Run the node again.", batch_response
+            )
 
         final_batch = wait_for_batch(
             batch_id,
